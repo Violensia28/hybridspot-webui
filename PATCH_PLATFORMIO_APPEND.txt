@@ -1,0 +1,11 @@
+
+; === Add to your platformio.ini build_flags ===
+; ensure default sensor 30A, stub logger to avoid build failure, and (optional) disable websockets
+build_flags =
+  -DDEFAULT_SENSOR_ACS=30
+  -DSSR_LOGGER_STUB=1
+  -DUSE_WEBSOCKETS=0
+
+; If you prefer to keep WebSockets, comment out USE_WEBSOCKETS=0 and add this:
+lib_deps =
+  links2004/WebSockets @ ^2.4.1
