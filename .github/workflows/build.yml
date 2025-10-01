@@ -1,0 +1,51 @@
+name: Build (manual & tags)
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*.*.*'
+env:
+  PIOENV: ci_build
+  APP_NAME: HYBRIDSPOT
+  APP_VERSION: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '0.6.3-ci' }}
+  PLATFORMIO_DISABLE_PROGRESSBAR: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ runner.os }}-${{ hashFiles('platformio.ini') }}
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: pio-${{ runner.os }}-${{ hashFiles('platformio.ini') }}
+          restore-keys: |
+            pio-${{ runner.os }}-
+      - name: Install PlatformIO
+        run: pipx install platformio || pip3 install -U platformio --user
+      - name: Build (clean + single-thread)
+        env:
+          APP_NAME: ${{ env.APP_NAME }}
+          APP_VERSION: ${{ env.APP_VERSION }}
+        run: |
+          pio run -e $PIOENV -t clean || true
+          rm -rf .pio ~/.platformio/.cache/tmp/pkg-installing-* 2>/dev/null || true
+          pio run -e $PIOENV -j 1
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware-${{ env.PIOENV }}-${{ env.APP_VERSION }}
+          path: |
+            .pio/build/${{ env.PIOENV }}/*.bin
+            .pio/build/${{ env.PIOENV }}/*.elf
+            include/BuildInfo.h
