@@ -1,36 +1,176 @@
 #include <Arduino.h>
 #include <WiFi.h>
-#include <Wire.h>
-#include <U8g2lib.h>
-#include <RotaryEncoder.h>
-#include <Bounce2.h>
-#include <ACS712.h>
-#include <stdarg.h>
-#include "pinmap.h"
-#include "settings_store.h"
-#include "BuildInfo.h"
-#include "zmpt_rms.h"
-#include "weld_fsm.h"
-#include "ssr_logger.h"
-#include "webui.h"
-#if defined(USE_OLED)
-U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, U8X8_PIN_NONE);
+#include <WebServer.h>
+#include <Preferences.h>
+
+#ifndef DEFAULT_PIN_SSR
+#define DEFAULT_PIN_SSR 26
 #endif
-#if defined(USE_ENCODER)
-RotaryEncoder encoder(PIN_ENC_A, PIN_ENC_B, RotaryEncoder::LatchMode::FOUR3);
-Bounce2::Button encBtn;
+
+// Build flags
+#ifndef AP_ONLY
+#define AP_ONLY 1
 #endif
-#if defined(USE_ACS712)
-ACS712 acs(PIN_ACS, 3.3f, 4095, 66.0f);
+
+#ifndef WEB_BEEP_ENABLE
+#define WEB_BEEP_ENABLE 1
 #endif
-ZmptRms zmpt; WeldFSM fsm; SettingsStore::Settings gSettings; static char lbuf[160];
-static inline void logf(const char* fmt,...){ va_list ap; va_start(ap,fmt); vsnprintf(lbuf,sizeof(lbuf),fmt,ap); va_end(ap); Serial.println(lbuf);} 
-static inline void buzz(uint16_t ms=40){ pinMode(PIN_BUZZ,OUTPUT); digitalWrite(PIN_BUZZ,HIGH); delay(ms); digitalWrite(PIN_BUZZ,LOW);} 
-struct Pres{uint16_t pre_ms,pause_ms,main_ms; bool dual;}; static const Pres PRESETS[]={ {0,0,60,false},{20,100,70,true},{30,120,80,true},{0,0,90,false},{40,150,100,true}}; static uint8_t pcount(){return sizeof(PRESETS)/sizeof(PRESETS[0]);}
-static float gI=0,gV=0,gI0=0,gV0=0; static bool gActive=false; static void SSR(bool on){ digitalWrite(PIN_SSR,on?HIGH:LOW);} static void FLOG(const char* e){logf("[FSM] %s",e);} 
-static void draw(){#if defined(USE_OLED) u8g2.clearBuffer(); u8g2.setFont(u8g2_font_6x12_tf); u8g2.drawStr(0,10,APP_NAME); char ln[48]; u8g2.setFont(u8g2_font_7x13B_tf); snprintf(ln,sizeof(ln),"I: %.1f mA",gI); u8g2.drawStr(0,28,ln); snprintf(ln,sizeof(ln),"V: %.1f V",gV); u8g2.drawStr(0,44,ln); auto&p=PRESETS[gSettings.preset_idx-1]; snprintf(ln,sizeof(ln),"Preset %u: %s %u/%u/%u",gSettings.preset_idx,p.dual?"x2":"x1",p.pre_ms,p.pause_ms,p.main_ms); u8g2.drawStr(0,60,ln); u8g2.sendBuffer(); #endif }
-static void btn(){#if defined(USE_ENCODER) encBtn.update(); static bool d=false; static uint32_t t0=0; if(encBtn.pressed()){d=true;t0=millis();} if(encBtn.released()){uint32_t h=millis()-t0; d=false; if(h<=600){ if(fsm.isIdle()){ auto&px=PRESETS[gSettings.preset_idx-1]; WeldPreset p{px.pre_ms,px.pause_ms,px.main_ms,px.dual}; gI0=gI; gV0=gV; gActive=true; fsm.start(p);} else { fsm.abort(); } } } #endif }
-static void enc(){#if defined(USE_ENCODER) static long lst=0; encoder.tick(); long pos=encoder.getPosition(); long d=pos-lst; if(!d) return; lst=pos; int idx=(int)gSettings.preset_idx+(d>0?1:-1); if(idx<1)idx=1; if(idx>(int)pcount()) idx=pcount(); if(idx!=gSettings.preset_idx){ gSettings.preset_idx=(uint8_t)idx; SettingsStore::save(gSettings); buzz(20);} #endif }
-static String dumpCSV(){ return SSRLog::dumpCSV(); }
-void setup(){ Serial.begin(115200); delay(150); #if defined(USE_OLED) Wire.begin(PIN_I2C_SDA,PIN_I2C_SCL); u8g2.begin(); #endif pinMode(PIN_SSR,OUTPUT); digitalWrite(PIN_SSR,LOW); #if defined(USE_ENCODER) pinMode(PIN_ENC_A,INPUT_PULLUP); pinMode(PIN_ENC_B,INPUT_PULLUP); encoder.setPosition(0); encBtn.attach(PIN_ENC_BTN,INPUT_PULLUP); encBtn.interval(5); encBtn.setPressedState(LOW); #endif SettingsStore::begin(); SettingsStore::load(gSettings); #if defined(USE_ACS712) acs.setmVperAmp(gSettings.acs_mV_per_A*gSettings.acs_divider); (void)acs.autoMidPointDC(100); #endif zmpt.begin(PIN_ZMPT,gSettings.zmpt_v_per_step,2000,20); zmpt.setHPFAlpha(0.995f); zmpt.setLPFAlpha(0.20f); fsm.begin(SSR,FLOG); SSRLog::begin(); WiFi.mode(WIFI_AP); WiFi.softAP("HYBRIDSPOT","hybridspot"); logf("AP IP: %s", WiFi.softAPIP().toString().c_str()); WebUI::begin(); WebUI::setBuild({APP_NAME,APP_VERSION,(String(GIT_REF)+"/"+String(GIT_SHA)).c_str()}); WebUI::onSelectPreset([](uint8_t idx){ if(idx<1)idx=1; if(idx>pcount()) idx=pcount(); gSettings.preset_idx=idx; SettingsStore::save(gSettings); }); WebUI::onWeldStart([](){ if(fsm.isIdle()){ auto&px=PRESETS[gSettings.preset_idx-1]; WeldPreset p{px.pre_ms,px.pause_ms,px.main_ms,px.dual}; gI0=gI; gV0=gV; gActive=true; fsm.start(p);} }); WebUI::onWeldStop([](){ fsm.abort(); gActive=false; }); WebUI::onCalibSave([](const WebUI::Calib& c){ gSettings.acs_mV_per_A=c.acs_mva; gSettings.acs_divider=c.acs_div; gSettings.zmpt_v_per_step=c.zmpt_vps; #if defined(USE_ACS712) acs.setmVperAmp(gSettings.acs_mV_per_A*gSettings.acs_divider); #endif zmpt.setVPerStep(gSettings.zmpt_v_per_step); SettingsStore::save(gSettings); }); WebUI::onCalibReset([](){ SettingsStore::resetDefaults(gSettings); #if defined(USE_ACS712) acs.setmVperAmp(gSettings.acs_mV_per_A*gSettings.acs_divider); #endif zmpt.setVPerStep(gSettings.zmpt_v_per_step); }); WebUI::onLogsClear([](){ SSRLog::clear(); }); WebUI::onLogsDump([](){ return dumpCSV(); }); logf("BOOT %s %s | preset=%u", APP_NAME, APP_VERSION, gSettings.preset_idx); buzz(60);} 
-void loop(){ zmpt.tick(); static uint32_t tACS=0; if(millis()-tACS>=5){ tACS=millis(); #if defined(USE_ACS712) gI=acs.mA_DC(1); #else gI=0; #endif } gV=zmpt.vrms(); fsm.tick(); if(fsm.isDone() && gActive){ auto&px=PRESETS[gSettings.preset_idx-1]; SSRPulseRec r{}; r.t0_ms=millis(); r.preset_idx=gSettings.preset_idx; r.dual=px.dual; r.pre_ms=px.pre_ms; r.pause_ms=px.pause_ms; r.main_ms=px.main_ms; r.i_start_mA=gI0; r.v_start_V=gV0; delay(5); r.i_post_mA=gI; r.v_post_V=gV; SSRLog::append(r); buzz(40); gActive=false; fsm.abort(); } enc(); btn(); static uint32_t tUI=0; if(millis()-tUI>=200){ tUI=millis(); draw(); } WebUI::Status s{}; auto st=fsm.state(); s.fsm = st==WeldFSM::IDLE? WebUI::FsmState::IDLE : (st==WeldFSM::PRE?WebUI::FsmState::PRE:(st==WeldFSM::PAUSE?WebUI::FsmState::PAUSE:(st==WeldFSM::MAIN?WebUI::FsmState::MAIN:WebUI::FsmState::DONE))); s.i_mA=gI; s.v_rms=gV; s.preset=gSettings.preset_idx; auto&p=PRESETS[gSettings.preset_idx-1]; s.dual=p.dual; s.pre=p.pre_ms; s.pause=p.pause_ms; s.main=p.main_ms; WebUI::setStatus(s); WebUI::Calib c{}; c.acs_mva=gSettings.acs_mV_per_A; c.acs_div=gSettings.acs_divider; c.zmpt_vps=gSettings.zmpt_v_per_step; c.hpf=0.995f; c.lpf=0.20f; WebUI::setCalib(c); WebUI::loop(); }
+
+#ifndef SIM_MODE
+#define SIM_MODE 1
+#endif
+
+WebServer server(80);
+Preferences prefs;
+
+struct SensorConfig {
+  String current_type; // e.g., "ACS712_30A"
+  float mv_per_A;      // 66.0 for 30A, 100.0 for 20A, 185.0 for 5A
+  int adc_mid;         // midpoint, e.g., 2048
+  float v_scale;       // ZMPT scale V per ADC unit
+  float phase_deg;
+};
+
+SensorConfig cfg;
+
+String jsonEscape(const String &s){
+  String o; o.reserve(s.length()+8);
+  for(char c: s){
+    if(c=='"' || c=='\\') { o += '\\'; o += c; }
+    else if(c=='\n') o += "\\n";
+    else o += c;
+  }
+  return o;
+}
+
+String makeStatusJson(){
+  // Stub values for Build #1
+  float vrms = 230.0;
+  float irms = 0.0;
+  bool welding = false;
+  String j = "{\"mode\":\"manual\",\"welding\":";
+  j += (welding?"true":"false");
+  j += ",\"vrms\":" + String(vrms,1) + ",\"irms\":" + String(irms,1) + ",\"guards\":{\"v\":false,\"i\":false,\"mcb\":false}}";
+  return j;
+}
+
+void handleRoot(){
+  #include "ui_assets.h"
+  server.send_P(200, "text/html; charset=utf-8", INDEX_HTML);
+}
+
+void handleStatic(const char* mime, const char* data){
+  server.send_P(200, mime, data);
+}
+
+void handleStatus(){
+  String j = makeStatusJson();
+  server.send(200, "application/json", j);
+}
+
+void handleNotFound(){
+  server.send(404, "application/json", "{\"error\":\"not found\"}");
+}
+
+void handleStart(){
+  // Build #1: stub acknowledge
+  server.send(202, "application/json", "{\"ok\":true}");
+}
+void handleStop(){ server.send(200, "application/json", "{\"ok\":true}"); }
+
+void handleGetSensor(){
+  String j = "{\"current\":{\"type\":\"" + cfg.current_type + "\",\"mV_per_A\":" + String(cfg.mv_per_A,1) + ",\"adc_midpoint\":" + String(cfg.adc_mid) + "},";
+  j += "\"voltage\":{\"scale_V_per_ADC\":" + String(cfg.v_scale,5) + ",\"phase_corr_deg\":" + String(cfg.phase_deg,2) + "}}";
+  server.send(200, "application/json", j);
+}
+
+void handleSetSensor(){
+  // Very simple parser: expects query params for Build #1 to avoid JSON lib
+  // e.g.: /api/sensor/config?current=ACS712_30A&mvA=66&mid=2048&vscale=0.122&phase=2
+  if(server.hasArg("current")) cfg.current_type = server.arg("current");
+  if(server.hasArg("mvA"))    cfg.mv_per_A = server.arg("mvA").toFloat();
+  if(server.hasArg("mid"))    cfg.adc_mid = server.arg("mid").toInt();
+  if(server.hasArg("vscale")) cfg.v_scale = server.arg("vscale").toFloat();
+  if(server.hasArg("phase"))  cfg.phase_deg = server.arg("phase").toFloat();
+  // persist
+  prefs.begin("sensor", false);
+  prefs.putString("ctype", cfg.current_type);
+  prefs.putFloat("mvpA", cfg.mv_per_A);
+  prefs.putInt("mid", cfg.adc_mid);
+  prefs.putFloat("vscale", cfg.v_scale);
+  prefs.putFloat("phase", cfg.phase_deg);
+  prefs.end();
+  server.send(200, "application/json", "{\"ok\":true}");
+}
+
+void handleOTA(){
+  // Placeholder for OTA upload page content
+  #include "ui_assets.h"
+  server.send_P(200, "text/html; charset=utf-8", OTA_HTML);
+}
+
+void setupRoutes(){
+  // UI
+  server.on("/", handleRoot);
+  server.on("/css/main.css", []{ #include "ui_assets.h" handleStatic("text/css", CSS_MAIN); });
+  server.on("/css/theme.css", []{ #include "ui_assets.h" handleStatic("text/css", CSS_THEME); });
+  server.on("/js/app.js", []{ #include "ui_assets.h" handleStatic("application/javascript", JS_APP); });
+  server.on("/js/api.js", []{ #include "ui_assets.h" handleStatic("application/javascript", JS_API); });
+  server.on("/js/audio.js", []{ #include "ui_assets.h" handleStatic("application/javascript", JS_AUDIO); });
+  server.on("/js/ui.js", []{ #include "ui_assets.h" handleStatic("application/javascript", JS_UI); });
+  server.on("/js/preset.js", []{ #include "ui_assets.h" handleStatic("application/javascript", JS_PRESET); });
+  server.on("/js/manual.js", []{ #include "ui_assets.h" handleStatic("application/javascript", JS_MANUAL); });
+  server.on("/js/status.js", []{ #include "ui_assets.h" handleStatic("application/javascript", JS_STATUS); });
+  server.on("/js/logs.js", []{ #include "ui_assets.h" handleStatic("application/javascript", JS_LOGS); });
+  server.on("/js/settings.js", []{ #include "ui_assets.h" handleStatic("application/javascript", JS_SETTINGS); });
+  server.on("/js/ota.js", []{ #include "ui_assets.h" handleStatic("application/javascript", JS_OTA); });
+  server.on("/assets/logo.svg", []{ #include "ui_assets.h" handleStatic("image/svg+xml", SVG_LOGO); });
+
+  // API
+  server.on("/api/status", HTTP_GET, handleStatus);
+  server.on("/api/weld/start", HTTP_POST, handleStart);
+  server.on("/api/weld/stop", HTTP_POST, handleStop);
+  server.on("/api/sensor/config", HTTP_GET, handleGetSensor);
+  server.on("/api/sensor/config", HTTP_POST, handleSetSensor);
+
+  // OTA (placeholder page; firmware OTA endpoint can be added next step)
+  server.on("/ota", HTTP_GET, handleOTA);
+
+  server.onNotFound(handleNotFound);
+}
+
+void setup(){
+  Serial.begin(115200);
+  pinMode(DEFAULT_PIN_SSR, OUTPUT);
+  digitalWrite(DEFAULT_PIN_SSR, LOW);
+
+  // Load sensor defaults
+  cfg.current_type = "ACS712_30A";
+  cfg.mv_per_A = 66.0f;
+  cfg.adc_mid = 2048;
+  cfg.v_scale = 0.122f;
+  cfg.phase_deg = 2.0f;
+
+  // Load from NVS if exists
+  prefs.begin("sensor", true);
+  cfg.current_type = prefs.getString("ctype", cfg.current_type);
+  cfg.mv_per_A     = prefs.getFloat("mvpA", cfg.mv_per_A);
+  cfg.adc_mid      = prefs.getInt("mid", cfg.adc_mid);
+  cfg.v_scale      = prefs.getFloat("vscale", cfg.v_scale);
+  cfg.phase_deg    = prefs.getFloat("phase", cfg.phase_deg);
+  prefs.end();
+
+#if AP_ONLY
+  WiFi.mode(WIFI_AP);
+  WiFi.softAP("SPOTWELD+", "weld12345");
+  Serial.print("AP IP: "); Serial.println(WiFi.softAPIP());
+#else
+  WiFi.mode(WIFI_AP_STA);
+#endif
+  setupRoutes();
+  server.begin();
+}
+
+void loop(){
+  server.handleClient();
+}
