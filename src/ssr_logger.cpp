@@ -1,4 +1,7 @@
-// ssr_logger.cpp
+#include <Arduino.h>
+#include "ssr_logger.h"
+
+// Safe, single-literal header and proper return
 String SSRLog::dumpCSV() {
     String csv;
     csv.reserve(count() * 64 + 64);
@@ -9,15 +12,15 @@ String SSRLog::dumpCSV() {
         SSRPulseRec r;
         get(i, r);
 
-        csv += String(r.t0_ms);                 csv += ',';
-        csv += String(r.preset_idx);            csv += ',';
+        csv += String(r.t0_ms);                  csv += ',';
+        csv += String(r.preset_idx);             csv += ',';
         csv += (r.dual ? F("dual") : F("single")); csv += ',';
-        csv += String(r.pre_ms);                csv += ',';
-        csv += String(r.pause_ms);              csv += ',';
-        csv += String(r.main_ms);               csv += ',';
-        csv += String(r.i_start_mA, 1);         csv += ',';
-        csv += String(r.i_post_mA, 1);          csv += ',';
-        csv += String(r.v_start_V, 2);          csv += ',';
+        csv += String(r.pre_ms);                 csv += ',';
+        csv += String(r.pause_ms);               csv += ',';
+        csv += String(r.main_ms);                csv += ',';
+        csv += String(r.i_start_mA, 1);          csv += ',';
+        csv += String(r.i_post_mA, 1);           csv += ',';
+        csv += String(r.v_start_V, 2);           csv += ',';
         csv += String(r.v_post_V, 2);
         csv += '\n';
     }
