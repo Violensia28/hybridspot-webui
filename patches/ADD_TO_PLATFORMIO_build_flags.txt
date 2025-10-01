@@ -1,0 +1,6 @@
+
+; === Add to your build_flags (inside [env:esp32dev]) ===
+build_flags =
+  -DDEFAULT_SENSOR_ACS=30
+  -DSSR_LOGGER_STUB=1
+  -DUSE_WEBSOCKETS=0

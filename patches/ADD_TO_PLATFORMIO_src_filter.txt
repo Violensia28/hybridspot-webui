@@ -1,0 +1,6 @@
+
+; === Add the following lines inside your [env:esp32dev] section ===
+; Exclude the original ssr_logger.cpp so the stub takes effect
+src_filter =
+  +<*>
+  -<ssr_logger.cpp>
