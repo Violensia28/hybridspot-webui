@@ -1,14 +1,1 @@
-export function initTabs(){
-  const tabs = document.querySelectorAll('nav#tabs button');
-  tabs.forEach(btn=>btn.addEventListener('click',()=>{
-    tabs.forEach(b=>b.classList.remove('active'));
-    btn.classList.add('active');
-    const id = btn.dataset.tab;
-    document.querySelectorAll('main section').forEach(s=>s.hidden = true);
-    document.getElementById('view-'+id).hidden = false;
-  }));
-}
-export function toast(msg){
-  const el = document.createElement('div'); el.className='toast'; el.textContent = msg;
-  document.body.appendChild(el); setTimeout(()=>el.remove(), 1800);
-}
+export function initTabs(){const t=document.querySelectorAll("nav#tabs button");t.forEach(e=>e.addEventListener("click",()=>{t.forEach(b=>b.classList.remove("active")),e.classList.add("active");const a=e.dataset.tab;document.querySelectorAll("main section").forEach(s=>s.hidden=!0),document.getElementById("view-"+a).hidden=!1}))}export function toast(t){const e=document.createElement("div");e.className="toast",e.textContent=t,document.body.appendChild(e),setTimeout(()=>e.remove(),1800)}
