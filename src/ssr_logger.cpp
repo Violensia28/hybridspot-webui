@@ -1,16 +1,15 @@
 #include <Arduino.h>
 #include "ssr_logger.h"
 
-// Safe, single-literal header and proper return
 String SSRLog::dumpCSV() {
     String csv;
-    csv.reserve(count() * 64 + 64);
+    csv.reserve(this->count() * 64 + 64);
     csv = F("ts_ms,preset,mode,pre_ms,pause_ms,main_ms,i_start,i_post,v_start,v_post\n");
 
-    const size_t cnt = count();
+    const size_t cnt = this->count();
     for (size_t i = 0; i < cnt; ++i) {
         SSRPulseRec r;
-        get(i, r);
+        this->get(i, r);
 
         csv += String(r.t0_ms);                  csv += ',';
         csv += String(r.preset_idx);             csv += ',';
