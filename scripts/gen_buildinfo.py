@@ -18,26 +18,24 @@ if not GIT_SHA:
 if not GIT_REF:
     GIT_REF = _git(["git", "rev-parse", "--abbrev-ref", "HEAD"]) or "local"
 
-content = (
-    "#pragma once
-"
-    "#ifndef BUILD_INFO_H
-E        "{0}"
-'
-    '#define APP_VERSION     "{1}"
-'
-    '#define GIT_SHA  ine APP_VERSION     "{1}"
-'
-    '#define GIT_SHA         "{2}"
-'
-    '#define GIT_REF         "{3}"
-'
-    '#define PIOENV_NAME     "{4}"
-'
-    "#endif
-"
-).format(APP_NAME, APP_VERSION, GIT_SHA, GIT_REF, PIOENV_NAME)
+lines = [
+    "#pragma once",
+    "#ifndef BUILD_INFO_H",
+    "#define BUILD_INFO_H",
+    '#define APP_NAME        "{0}"'.format(APP_NAME),
+    '#define APP_VERSION     "{0}"'.format(APP_VERSION),
+    '#define GIT_SHA         "{0}"'.format(GIT_SHA),
+    '#define GIT_REF         "{0}"'.format(GIT_REF),
+    '#define PIOENV_NAME     "{0}"'.format(PIOENV_NAME),
+    "#endif",
+]
 
 out = pathlib.Path("include") / "BuildInfo.h"
-out.write_text(content, encoding="utf-8")
-print(f"[gen_buildinfo] Wrote {out} -> {{APP_NAME: {APP_NAME}, APP_VERSION: {APP_VERSION}, GIT_REF: {GIT_REF}, GIT_SHA: {GIT_SHA}}}")
+out.parent.mkdir(parents=True, exist_ok=True)
+out.write_text("
+".join(lines) + "
+", encoding="utf-8")
+
+print("[gen_buildinfo] Wrote {} -> {{APP_NAME: {}, APP_VERSION: {}, GIT_REF: {}, GIT_SHA: {}}}".format(
+    out, APP_NAME, APP_VERSION, GIT_REF, GIT_SHA
+))
