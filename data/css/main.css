@@ -1,0 +1,15 @@
+body{font-family:system-ui,Arial,sans-serif;margin:0;padding:0;background:#0b0e14;color:#e6e6e6}
+header{display:flex;align-items:center;gap:8px;padding:10px 12px;background:#111824;border-bottom:1px solid #1d2636}
+header img{height:22px}
+nav#tabs{display:flex;gap:6px;padding:8px;border-bottom:1px solid #1d2636;background:#0f1520;position:sticky;top:0}
+nav#tabs button{background:#212a3b;border:1px solid #31405a;color:#e6e6e6;padding:8px 12px;border-radius:6px}
+nav#tabs button.active{background:#2f3c55;border-color:#4a6086}
+main{padding:12px}
+section{max-width:920px}
+.card{background:#101827;border:1px solid #1f2a44;border-radius:8px;padding:12px;margin:10px 0}
+.row{display:flex;gap:10px;flex-wrap:wrap}
+.col{flex:1 1 260px}
+label{display:block;margin:6px 0 2px}
+input,select,button{padding:8px;border-radius:6px;border:1px solid #31405a;background:#0b1220;color:#e6e6e6}
+.btn{cursor:pointer}
+.toast{position:fixed;bottom:12px;left:50%;transform:translateX(-50%);background:#2a364d;color:#fff;padding:8px 12px;border-radius:6px;border:1px solid #3b4f71}

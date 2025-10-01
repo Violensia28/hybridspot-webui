@@ -1,0 +1,4 @@
+:root{--ok:#3ecf8e;--warn:#ffb020;--err:#ff5d5d;--pri:#4da3ff}
+.ok{color:var(--ok)}.warn{color:var(--warn)}.err{color:var(--err)}
+.btn-primary{background:var(--pri);border-color:#3f86d1}
+.btn-danger{background:#cf3e3e;border-color:#a02f2f}
