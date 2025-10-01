@@ -1,0 +1,17 @@
+{
+  "name": "ESP32 PIO Dev",
+  "features": {
+    "ghcr.io/devcontainers/features/python:1": {
+      "version": "3.11"
+    }
+  },
+  "postCreateCommand": "pipx install platformio || pip3 install -U platformio --user",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "platformio.platformio-ide",
+        "ms-vscode.cpptools"
+      ]
+    }
+  }
+}
